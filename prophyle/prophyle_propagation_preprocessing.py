@@ -2,7 +2,7 @@
 """K-mer propagation pre-processing.
 
 Extract subtrees, merge ProPhyle Newick/NHX trees, possibly run autocomplete
-(add FASTAPATH and create names for internal nodes) and subsample the resulting tree.
+(add path and create names for internal nodes) and subsample the resulting tree.
 
 Author: Karel Brinda <kbrinda@hsph.harvard.edu>
 
@@ -32,11 +32,11 @@ def add_prefix(tree, prefix):
     return tree
 
 
-def autocomplete_fastapath(tree):
+def autocomplete_fasta_path(tree):
     print("Autocompleting FASTA paths", file=sys.stderr)
     for n in tree.traverse():
         if len(n.children) == 0:
-            n.add_features(fastapath="{}.fa".format(n.name))
+            n.add_features(path="{}.fa".format(n.name))
     return tree
 
 
@@ -95,8 +95,8 @@ def merge_trees(input_trees_fn, output_tree_fn, verbose, add_prefixes, sampling_
         t.add_child(tree_to_add)
 
     if autocomplete:
-        if not pro.has_attribute(t, "fastapath"):
-            t = autocomplete_fastapath(t)
+        if not (pro.has_attribute(t, "path") or pro.has_attribute(t, "fastapath")):
+            t = autocomplete_fasta_path(t)
         t = autocomplete_internal_node_names(t)
 
     if sampling_rate is not None:
@@ -118,7 +118,7 @@ def merge_trees(input_trees_fn, output_tree_fn, verbose, add_prefixes, sampling_
 
         if verbose:
             print(
-                "Removing the following leaves: {}".format(", ".join(map(apply(lambda x: x.name, leaves_to_remove)))),
+                "Removing the following leaves: {}".format(", ".join(map(lambda x: x.name, leaves_to_remove))),
                 file=sys.stderr
             )
 
@@ -132,6 +132,11 @@ def merge_trees(input_trees_fn, output_tree_fn, verbose, add_prefixes, sampling_
                 sampling_rate, len(leaves_2), len(leaves_1)
             ), file=sys.stderr
         )
+
+    for node in t.traverse("postorder"):
+        if hasattr(node, "fastapath"):
+            node.add_feature("path", node.fastapath)
+            node.del_feature("fastapath")
 
     if verbose:
         print("Writing to '{}'".format(output_tree_fn), file=sys.stderr)

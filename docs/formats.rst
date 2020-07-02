@@ -85,9 +85,12 @@ Specification
 	   * - (name)
 	     - string
 	     - Node name (typically the TaxID of the node). The names should be unique and must not contain ``@``.
-	   * - fastapath
+	   * - path
 	     - string
 	     - Files with genomic sequences, separated by ``@`` (relative paths from the directory of the tree). Only for leaves.
+	   * - fastapath
+	     - string
+	     - Deprecated (use `path` instead).
 	   * - rank
 	     - string/int
 	     - Taxonomic rank.
@@ -108,7 +111,7 @@ Example
 """""""
 Previous tree after autocompleting to NHX::
 
-	(((n1:1[&&NHX:dist=1.0:fastapath=n1.fa:support=1.0],n2:1[&&NHX:dist=1.0:fastapath=n2.fa:support=1.0])o1:1[&&NHX:dist=1.0:support=1.0],(n3:1[&&NHX:dist=1.0:fastapath=n3.fa:support=1.0],n4:1[&&NHX:dist=1.0:fastapath=n4.fa:support=1.0],n5:1[&&NHX:dist=1.0:fastapath=n5.fa:support=1.0])o2:1[&&NHX:dist=1.0:support=1.0])p1:0[&&NHX:dist=0.0:support=1.0])merge_root:1[&&NHX:dist=1.0:support=1.0];
+	(((n1:1[&&NHX:dist=1.0:path=n1.fa:support=1.0],n2:1[&&NHX:dist=1.0:path=n2.fa:support=1.0])o1:1[&&NHX:dist=1.0:support=1.0],(n3:1[&&NHX:dist=1.0:path=n3.fa:support=1.0],n4:1[&&NHX:dist=1.0:path=n4.fa:support=1.0],n5:1[&&NHX:dist=1.0:path=n5.fa:support=1.0])o2:1[&&NHX:dist=1.0:support=1.0])p1:0[&&NHX:dist=0.0:support=1.0])merge_root:1[&&NHX:dist=1.0:support=1.0];
 
 
 Sequences
@@ -216,6 +219,10 @@ Specification
 	     - Type
 	     - Description
 	     - Range
+	   * - ln
+	     - integer
+	     - Read length.
+	     -
 	   * - h1
 	     - integer
 	     - Number of shared k-mers.

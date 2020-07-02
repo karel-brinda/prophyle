@@ -15,27 +15,35 @@ from ete3 import Tree
 from ete3.coretype.tree import TreeError
 from collections import Counter
 
+sys.path.append(os.path.dirname(__file__))
+import prophylelib as pro
+import version
+
 IN_FMTS = ['sam', 'bam', 'cram', 'uncompressed_bam', 'kraken', 'histo']
 STATS = ['w', 'u', 'wl', 'ul']
-KNOWN_RANKS = ['superkingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species', 'strain']
-KRAKEN_RANKS = {
-    'superkingdom': 'K',
-    'phylum': 'P',
-    'class': 'C',
-    'order': 'O',
-    'family': 'F',
-    'genus': 'G',
-    'species': 'S'
+
+KNOWN_RANKS = ['10', '20', '30', '40', '50', '60', '70']
+KNOWN_RANKS_NAMES = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species']
+
+RANKS_DICT = {
+    '10': 'kingdom',
+    '20': 'phylum',
+    '30': 'class',
+    '40': 'order',
+    '50': 'family',
+    '60': 'genus',
+    '70': 'species',
 }
+KRAKEN_RANKS = {'10': 'K', '20': 'P', '30': 'C', '40': 'O', '50': 'F', '60': 'G', '70': 'S'}
 METAPHLAN_RANKS = {
     'unclassified': 'u__',
-    'superkingdom': 'k__',
-    'phylum': 'p__',
-    'class': 'c__',
-    'order': 'o__',
-    'family': 'f__',
-    'genus': 'g__',
-    'species': 's__'
+    '10': 'k__',
+    '20': 'p__',
+    '30': 'c__',
+    '40': 'o__',
+    '50': 'f__',
+    '60': 'g__',
+    '70': 's__'
 }
 
 
@@ -208,20 +216,20 @@ def asgs_to_leaves(tree, asgs):
     for fn, asg_dict in asgs.items():
         asgs_to_leaves[fn] = {}
         for qname, ref in asg_dict.items():
-            l = []
-            for tax in ref:
-                if tax != "merge_root":
+            leaves = []
+            for node_name in ref:
+                if node_name != "merge_root":
                     try:
-                        n = tree & tax
+                        node = tree & node_name
                     except TreeError:
-                        print("[prophyle_analyze] Node {} not found in the tree".format(n1_name), file=sys.stderr)
+                        print("[prophyle_analyze] Node {} not found in the tree".format(node_name), file=sys.stderr)
                         raise
-                if n.is_leaf():
-                    l.append(n.name)
+                if node.is_leaf():
+                    leaves.append(node.name)
                 else:
-                    for leaf in n:
-                        l.append(leaf.name)
-            asgs_to_leaves[fn][qname] = list(l)
+                    for leaf in node:
+                        leaves.append(leaf.name)
+            asgs_to_leaves[fn][qname] = list(leaves)
 
     return asgs_to_leaves
 
@@ -245,17 +253,17 @@ def compute_histogram(tree, asgs, stats):
         for qname, ref in asg_dict.items():
             # weighted score for multiple assignments
             no_asg = float(len(ref))
-            for taxid in ref:
-                hist[fn][taxid] += 1 / no_asg
+            for node_name in ref:
+                hist[fn][node_name] += 1 / no_asg
             # unique assignments only
             if len(ref) == 1:
-                taxid = ref[0]
-                unique_hist[fn][taxid] += 1
+                node_name = ref[0]
+                unique_hist[fn][node_name] += 1
 
     return hist, unique_hist
 
 
-def print_histogram(histogram, out_f, tax_tree=None):
+def print_histogram(histogram, out_f, tree=None):
     """Print a histogram in tsv format with header, each line containing:
      - node name;
      - score of the node in the first sample;
@@ -266,59 +274,46 @@ def print_histogram(histogram, out_f, tax_tree=None):
         histogram (dict of str:Counter): histogram computed using compute_histogram.
         out_f (file): output file.
     """
-    taxa2names = {}
-    taxa2info = {}
+    name2info = {}
     leaves = []
-    if tax_tree is not None:
-        leaves = [n.name for n in tax_tree.get_leaves()]
-        for node in tax_tree.traverse('preorder'):
+    if tree is not None:
+        leaves = [n.name for n in tree.get_leaves()]
+        for node in tree.traverse('preorder'):
             if node.name != 'merge_root':
                 node_name = node.name
                 try:
-                    taxid = str(node.taxid)
-                except AttributeError:
-                    taxid = node_name
-                try:
                     rank = node.rank
-                except:
-                    rank = 'no rank'
+                except AttributeError:
+                    rank = '-1'
                 try:
                     sci_name = node.sci_name
-                except:
+                except AttributeError:
                     sci_name = node_name
-                try:
-                    lineage = node.lineage.split('|')
-                except:
-                    lineage = [taxid]
-                taxa2names[taxid] = node_name
-                taxa2info[node_name] = (taxid, rank, sci_name, tuple(lineage))
+                lineage = list(reversed([a.name for a in node.iter_ancestors()]))
+                name2info[node_name] = (rank, sci_name, tuple(lineage))
 
     # sum the histograms of each sample to sort assignments by score
     merged_histo = sum(histogram.values(), Counter())
     samples = sorted(histogram.keys())
 
     header = ["#OTU_ID"] + samples
-    if tax_tree is not None:
-        header += KNOWN_RANKS
+    if tree is not None:
+        header += KNOWN_RANKS_NAMES
     print(*header, sep='\t', file=out_f)
 
     for node_name, w in merged_histo.most_common():
         sample_scores = [histogram[sample][node_name] for sample in samples]
         out_line = [node_name
                     ] + ["{:.2f}".format(round(c, 2)) if isinstance(c, float) else str(c) for c in sample_scores]
-        if tax_tree is not None:
+        if tree is not None:
             info = ['NA'] * len(KNOWN_RANKS)
             try:
-                taxid, rank, sci_name, lineage = taxa2info[node_name]
+                rank, sci_name, lineage = name2info[node_name]
             except KeyError:
                 continue
-            for t in lineage[:-1]:
+            for anc in lineage:
                 try:
-                    name = taxa2names[t]
-                except KeyError:
-                    continue
-                try:
-                    _, r, sn, _ = taxa2info[name]
+                    r, sn, _ = name2info[anc]
                 except KeyError:
                     continue
                 try:
@@ -356,10 +351,10 @@ def load_histo(in_fns, tree):
                                        1), "Malformed histogram (check fields at line {})".format(line_num + 2)
                 node_name = fields[0]
                 scores = fields[1:]
-                if not node_name in tree_names:
+                if node_name not in tree_names:
                     print(
                         """[prophyle_analyze] Error: node name {} found in the
-                            histogram {} but not in the tree""".format(n1_name, fn), file=sys.stderr
+                            histogram {} but not in the tree""".format(node_name, fn), file=sys.stderr
                     )
                     raise
                 for sample, score in zip(samples, scores):
@@ -367,190 +362,27 @@ def load_histo(in_fns, tree):
     return histo
 
 
-def ncbi_tree_info(tree):
-    ncbi = True
-    # count of descendants at each rank (used for normalization of assignments propagation)
-    ranked_desc_count = {rank: Counter() for rank in KNOWN_RANKS}
-    tax2rank = {'1': 'no rank'}
-    for node in tree.traverse('postorder'):
-        if node.name != 'merge_root':
-            try:
-                node_name = str(node.name)
-                taxid = str(node.taxid)
-                if '-' in node_name:
-                    if taxid != node_name.split('-')[1]:
-                        print(
-                            """[prophyle_analyze] the taxid of node {} is different
-                                from its name. Switching to leaf-mode
-                                analysis""".format(node_name), file=sys.stderr
-                        )
-                        ncbi = False
-                        return None, None
-                elif node_name != taxid:
-                    print(
-                        """[prophyle_analyze] the taxid of node {} is different
-                            from its name. Switching to leaf-mode
-                            analysis""".format(node_name), file=sys.stderr
-                    )
-                    ncbi = False
-                    return None, None
-                rank = node.rank
-            except AttributeError:
-                print(
-                    """[prophyle_analyze] taxonomic annotations (taxid or
-                        rank) missing for node {}. Switching to leaf-mode
-                        analysis""".format(node.name), file=sys.stderr
-                )
-                ncbi = False
-                return None, None
-            tax2rank[node_name] = rank
-            if rank in KNOWN_RANKS:
-                anc_ranks = []
-                for anc in node.iter_ancestors():
-                    if anc.name == "merge_root":
-                        ranked_desc_count[rank]['1'] += 1
-                    else:
-                        try:
-                            anc_name = str(anc.name)
-                            anc_rank = anc.rank
-                        except AttributeError:
-                            print(
-                                """[prophyle_analyze] taxonomic annotations (taxid or
-                                    rank) missing for node {}. Switching to leaf-mode
-                                    analysis""".format(anc.name), file=sys.stderr
-                            )
-                            ncbi = False
-                            return None, None
-                        ranked_desc_count[rank][anc_name] += 1
-
-    return tax2rank, ranked_desc_count
-
-
 def compute_otu_table(histogram, tree):
     otu_table = {}
-    tax2rank, ranked_desc_count = ncbi_tree_info(tree)
-    ncbi = False if (tax2rank is None or ranked_desc_count is None) else True
     for sample, histo in histogram.items():
         otu_table[sample] = Counter(histo)
         otu_t = otu_table[sample]
-        if ncbi:
-            for node in tree.traverse('postorder'):
-                if node.name != 'merge_root':
-                    node_name = node.name
-                    rank = node.rank
-                    count = histo[node_name]
-                    if count != 0:
-                        for anc in node.iter_ancestors():
-                            if anc.name != 'merge_root':
-                                otu_t[str(anc.name)] += count
-                        # leaves=node.get_leaves()
-                        # for desc in node.iter_descendants():
-                        #   desc_taxid=str(desc.name)
-                        #   desc_rank=desc.rank
-                        #   # propagate weighted assigment count to descendants
-                        #   # (divided by no of nodes at each rank, or leaves count)
-                        #   if desc_rank in KNOWN_RANKS:
-                        #       otu_t[desc_taxid]+=count/float(ranked_desc_count[desc_rank][taxid])
-                        #   elif desc.is_leaf():
-                        #       otu_t[desc_taxid]+=count/float(len(leaves))
-                        # # remove unranked internal nodes from the table (impossible
-                        # # to calculate propagation score accurately)
-                        # if (rank not in KNOWN_RANKS) and (not node.is_leaf()):
-                        #   del otu_t[taxid]
-        else:
-            print("[prophyle_analyze] Missing some taxonomic tree annotations, switching to leaves-mode")
-            for node_name, count in histo.items():
-                try:
-                    node = tree & node_name
-                except TreeError:
-                    print("[prophyle_analyze] Error: node {} not in the tree".format(node_name), file=sys.stderr)
-                    raise
-                # propagate assigments to internal nodes weighted by the number
-                # of descendant leaves, then remove them from the otu table
-                if not node.is_leaf():
-                    leaves = node.get_leaves()
-                    prop_count = count / float(len(leaves))
-                    for leaf in leaves:
-                        otu_t[leaf.name] += prop_count
-                    del otu_t[node_name]
+        for node_name, count in histo.items():
+            try:
+                node = tree & node_name
+            except TreeError:
+                print("[prophyle_analyze] Error: node {} not in the tree".format(node_name), file=sys.stderr)
+                raise
+            # propagate assigments to internal nodes weighted by the number
+            # of descendant leaves, then remove them from the otu table
+            if not node.is_leaf():
+                leaves = node.get_leaves()
+                prop_count = count / float(len(leaves))
+                for leaf in leaves:
+                    otu_t[leaf.name] += prop_count
+                del otu_t[node_name]
 
-    return otu_table, ncbi
-
-
-# def print_otu_table(otu_t, tree, out_fn, max_lines, fmt="hdf5", ncbi=False):
-#     samples=sorted(otu_t.keys())
-#     otus=sorted(set(otu for sample, v in otu_t.items() for otu in v))
-#     data=[]
-#     if ncbi:
-#         otus_metadata=[{'taxonomy':node.named_lineage.split('|'),'rank':node.rank}
-#                         for taxid in otus for node in tree.search_nodes(taxid=taxid)]
-#     else:
-#       #check that is not merge_root
-#         features = set()
-#         for n in tree.traverse():
-#             features |= n.features
-#         otus_metadata=[{f:getattr(node,f) for f in features}
-#                         for node_name in otus for node in tree.search_nodes(name=node_name)]
-#     assert len(otus)==len(otus_metadata), 'Metadata list is too long (duplicate nodes?)'
-#     for otu in otus:
-#         samples_counts=[]
-#         for sample in samples:
-#             samples_counts.append(otu_t[sample][otu])
-#         data.append(samples_counts)
-#     np_data=np.array(data)
-#     table = Table(np_data, otus, samples, otus_metadata,
-#                 type='OTU table', table_id=out_fn, generated_by='ProPhyle',
-#                 create_date=str(dt.now().isoformat()))
-#
-#     if fmt == "hdf5":
-#         open_biom = h5py.File
-#     else:
-#         open_biom = open
-#     with open_biom(out_fn, 'w') as out_f:
-#         if fmt == "json":
-#             table.to_json(table.generated_by, direct_io=out_f)
-#         elif fmt == "tsv":
-#             out_f.write(table.to_tsv())
-#         else:
-#             table.to_hdf5(out_f, table.generated_by)
-
-# def print_taxonomy(tree, out_fn):
-#
-#   taxa2info={}
-#   for node in tree.traverse('preorder'):
-#       if node.name!='merge_root':
-#           try:
-#               taxid=str(node.name).strip()
-#               rank=node.rank.strip()
-#               sci_name=node.sci_name.strip()
-#               if rank in KNOWN_RANKS:
-#                   taxa2info[taxid]=(rank,sci_name)
-#           except AttributeError:
-#               continue
-#
-#   with open(out_fn, 'w') as out_f:
-#       print('#taxid\t'+'\t'.join(KNOWN_RANKS), file=out_f)
-#       for node in tree.traverse('preorder'):
-#           if node.name!='merge_root':
-#               try:
-#                   lineage=map(str.strip,node.lineage.split('|'))
-#                   rank=node.rank.strip()
-#               except AttributeError:
-#                   continue
-#               if rank in KNOWN_RANKS:
-#                   info=['NA']*len(KNOWN_RANKS)
-#                   for t in lineage:
-#                       try:
-#                           r,sn=taxa2info[t]
-#                       except KeyError:
-#                           continue
-#                       try:
-#                           i=KNOWN_RANKS.index(r)
-#                           info[i]=sn
-#                       except ValueError:
-#                           continue
-#                   # t is the last element of lineage, e.g. the taxid of the node
-#                   print(t+'\t'+'\t'.join(info), file=out_f)
+    return otu_table
 
 
 def print_kraken_report(otu_table, histogram, unclassified, tree, out_f):
@@ -573,10 +405,6 @@ def print_kraken_report(otu_table, histogram, unclassified, tree, out_f):
         node_name = node.name
         if node_name != 'merge_root':
             try:
-                taxid = str(node.taxid)
-            except AttributeError:
-                taxid = node_name
-            try:
                 sci_name = node.sci_name
             except AttributeError:
                 sci_name = node_name
@@ -596,7 +424,7 @@ def print_kraken_report(otu_table, histogram, unclassified, tree, out_f):
                 # Rank code
                 out_line.append(KRAKEN_RANKS.get(rank, '-'))
                 # NCBI taxonomy ID
-                out_line.append(taxid)
+                out_line.append(node_name)
                 # indented scientific name
                 out_line.append('  ' * indentation[node_name] + sci_name)
 
@@ -605,6 +433,7 @@ def print_kraken_report(otu_table, histogram, unclassified, tree, out_f):
 
 
 def print_metaphlan_report(otu_table, tot_count, tree, out_f):
+
     samples = list(otu_table.keys())
     header = ['ID'] + samples
     print(*header, sep='\t', file=out_f)
@@ -612,24 +441,17 @@ def print_metaphlan_report(otu_table, tot_count, tree, out_f):
         node_name = node.name
         counts = [otu_table[s][node_name] for s in samples]
         if sum(counts) > 0:
-            try:
-                taxid = str(node.taxid)
-            except AttributeError:
-                taxid = node_name
-            try:
-                lineage = node.lineage.split('|')
-            except AttributeError:
-                lineage = [taxid]
+            lineage = list(reversed([a.name for a in node.iter_ancestors()]))
             # taxonomic string (r__name|r__name...)
             tax_string = ''
-            for t in lineage[:-1]:
+            for anc in lineage:
                 try:
-                    n = tree.search_nodes(taxid=t)[0]
-                except (AttributeError, IndexError) as e:
+                    n = tree & node_name
+                except TreeError:
                     continue
                 try:
                     rank = n.rank
-                except:
+                except AttributeError:
                     rank = 'no rank'
                 if rank in KNOWN_RANKS:
                     try:
@@ -648,7 +470,7 @@ def print_metaphlan_report(otu_table, tot_count, tree, out_f):
                 sci_name = node_name
             prefix = METAPHLAN_RANKS.get(rank, 'u__')
             # if lineage is not coherent, just use this node's info
-            if taxid != lineage[-1]:
+            if node_name != lineage[-1]:
                 tax_string = prefix + sci_name
             else:
                 tax_string += prefix + sci_name
@@ -711,21 +533,22 @@ def main():
         unique_histogram = None
     else:
         histogram, unique_histogram = compute_histogram(tree, asgs, args.stats)
-    otu_table, ncbi = compute_otu_table(histogram, tree)
+
+    otu_table = compute_otu_table(histogram, tree)
     with open(args.out_prefix + '.rawhits.tsv', 'w') as f:
         if args.stats.startswith('w'):
-            print_histogram(histogram, f, tree if ncbi else None)
+            print_histogram(histogram, f, tree)
         elif unique_histogram is not None:
-            print_histogram(unique_histogram, f, tree if ncbi else None)
+            print_histogram(unique_histogram, f, tree)
+
     with open(args.out_prefix + '.otu.tsv', 'w') as f:
-        print_histogram(otu_table, f, tree if ncbi else None)
-    if ncbi:
-        with open(args.out_prefix + '.kraken.tsv', 'w') as f:
-            tot_count = print_kraken_report(otu_table, histogram, unclassified, tree, f)
-        with open(args.out_prefix + '.metaphlan.tsv', 'w') as f:
-            print_metaphlan_report(otu_table, tot_count, tree, f)
-        with open(args.out_prefix + '.centrifuge.tsv', 'w') as f:
-            print_centrifuge_report(otu_table, histogram, unique_histogram, tree, f)
+        print_histogram(otu_table, f, tree)
+    with open(args.out_prefix + '.kraken.tsv', 'w') as f:
+        tot_count = print_kraken_report(otu_table, histogram, unclassified, tree, f)
+    with open(args.out_prefix + '.metaphlan.tsv', 'w') as f:
+        print_metaphlan_report(otu_table, tot_count, tree, f)
+    with open(args.out_prefix + '.centrifuge.tsv', 'w') as f:
+        print_centrifuge_report(otu_table, histogram, unique_histogram, tree, f)
 
 
 if __name__ == "__main__":

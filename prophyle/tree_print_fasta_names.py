@@ -14,8 +14,14 @@ class TreeIndex:
 
     def process_node(self, node):
         if node.is_leaf():
-            if hasattr(node, "fastapath"):
+            path = False
+            if hasattr(node, "path"):
+                fastas_fn = node.path.split("@")
+                path = True
+            elif hasattr(node, "fastapath"):
                 fastas_fn = node.fastapath.split("@")
+                path = True
+            if path:
                 for fasta_fn in fastas_fn:
                     print(fasta_fn)
 

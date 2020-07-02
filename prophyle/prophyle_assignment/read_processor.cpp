@@ -114,14 +114,12 @@ void ReadProcessor::print_sam_header(std::ostream& out) const {
   for (int32_t id = 0; id < tree_.nodes_count(); ++id) {
     const auto& tags = tree_.tags(id);
     auto node = tree_.node_by_id(id);
-    auto gi = tags.find("gi");
-    auto fastapath = tags.find("fastapath");
+    auto path = tags.find("path");
     auto sci_name = tags.find("sci_name");
     if (strcmp(node->name, "")) {
       out << "@SQ\tSN:" << node->name <<
           "\tLN:" << kFakeContigLength <<
-          (gi == tags.cend() ? "" : "\tAS:" + (*gi).second) <<
-          (fastapath == tags.cend() ? "" : "\tUR:" + (*fastapath).second) <<
+          (path == tags.cend() ? "" : "\tUR:" + (*path).second) <<
           (sci_name == tags.cend() ? "" : "\tSP:" + (*sci_name).second) <<
           std::endl;
     }

@@ -32,11 +32,6 @@ ProPhyle – the main program
 	.. include:: reference/classify.txt
 		:code: text
 
-``prophyle analyze``
-^^^^^^^^^^^^^^^^^^^^
-	.. include:: reference/analyze.txt
-		:code: text
-
 ``prophyle compress``
 ^^^^^^^^^^^^^^^^^^^^^
 	.. include:: reference/compress.txt
@@ -69,12 +64,6 @@ ProPhyle – the main program
 -----------------------
 
 	.. include:: reference/prophyle_assignment.py.txt
-		:code: text
-
-``prophyle_analyze.py``
------------------------
-
-	.. include:: reference/prophyle_analyze.py.txt
 		:code: text
 
 ``prophyle_propagation_makefile.py``

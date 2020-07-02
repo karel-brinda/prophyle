@@ -71,6 +71,14 @@ def close_log():
             log_file.close()
 
 
+def error(*msg, error_code=1):
+    print('ProPhyle Error:', *msg, file=sys.stderr)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    close_log()
+    sys.exit(error_code)
+
+
 def message(*msg, subprogram='', upper=False, only_log=False):
     """Print a ProPhyle message to stderr.
 
@@ -155,9 +163,6 @@ def validate_prophyle_nhx_tree(tree, verbose=True, throw_exceptions=True, output
         verbose (bool): Verbose mode.
         throw_exceptions (bool): Throw an exception if the tree is not valid.
         output_fo (file): Output file object.
-
-    Raises:
-        ValueError: The tree is not valid.
     """
 
     assert isinstance(tree, ete3.Tree), tree
@@ -222,7 +227,7 @@ def validate_prophyle_nhx_tree(tree, verbose=True, throw_exceptions=True, output
 
     if throw_exceptions:
         if error:
-            raise ValueError("Invalid tree. The format of the tree is not correct. See the messages above.")
+            error("Invalid tree. The format of the tree is not correct. See the messages above.")
 
     if error:
         return False
@@ -273,6 +278,26 @@ def file_sizes(*fns):
         tuple(int): File sizes.
     """
     return tuple([os.stat(fn).st_size for fn in fns])
+
+
+def sizeof_fmt(bs, suffix='B'):
+    """Convert bytes to a human readable string.
+
+    Based on https://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
+
+    Args:
+        bs (int): File size in bytes.
+
+    Args:
+        str: Human readable string.
+    """
+
+    num = bs
+    for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f %s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f %s%s" % (num, 'Yi', suffix)
 
 
 def touch(*fns):
@@ -339,14 +364,15 @@ def makedirs(*ds):
 
 
 def existing_and_newer(fn0, fn):
-    """Test if file fn exists and is newer than fn0. Raise an exception if fn0 does not exist.
+    """Test if file fn exists and is newer than fn0. Exit if fn0 does not exist.
 
     Args:
         fn0 (str): Old file.
         fn (str): New file (to be generated from fn0).
     """
 
-    assert os.path.isfile(fn0), "Dependency '{}' does not exist".format(fn0)
+    if not os.path.isfile(fn0):
+        error("Dependency '{}' does not exist".format(fn0))
 
     if not os.path.isfile(fn):
         return False
@@ -358,7 +384,7 @@ def existing_and_newer(fn0, fn):
 
 
 def existing_and_newer_list(fn0_l, fn):
-    """Test if file fn exists and is newer than all files in fn0_l. Raise an exception if some fn0 file does not exist.
+    """Test if file fn exists and is newer than all files in fn0_l. Exit if some fn0 file does not exist.
 
     Args:
         fn0_l (list of str): Old files list.
@@ -377,24 +403,25 @@ def test_files(*fns, test_nonzero=False, allow_pipes=False):
         *fns: Files.
         test_nonzero (bool): Test if files have size greater than zero.
         allow_pipes (bool): Allow Unix pipes as input and don't test size.
-
-    Raises:
-        AssertionError: File does not exist or it is empty.
     """
 
     for fn in fns:
         is_file = os.path.isfile(fn)
         is_pipe = pathlib.Path(fn).is_fifo()
         if allow_pipes:
-            assert is_file or is_pipe, 'File "{}" does not exist.'.format(fn)
+            if not is_file or is_pipe:
+                error('File "{}" does not exist.'.format(fn))
         else:
             if is_pipe:
-                assert is_file, 'File "{}" is a process substitution or a device.'.format(fn)
+                if not is_file:
+                    error('File "{}" is a process substitution or a device.'.format(fn))
             else:
-                assert is_file, 'File "{}" does not exist.'.format(fn)
+                if not is_file:
+                    error('File "{}" does not exist.'.format(fn))
 
         if test_nonzero and not allow_pipes:
-            assert file_sizes(fn)[0], 'File "{}" has size 0.'.format(fn)
+            if not file_sizes(fn)[0]:
+                error('File "{}" has size 0.'.format(fn))
 
 
 ########
@@ -412,9 +439,6 @@ def run_safe(command, output_fn=None, output_fo=None, err_msg=None, thr_exc=True
         err_msg (str): Error message if the command fails.
         thr_exc (bool): Through exception if the command fails. error_msg or thr_exc must be set.
         silent (bool): Silent mode (print messages only if the command fails).
-
-    Raises:
-        RuntimeError: Command exited with a non-zero code.
     """
 
     assert output_fn is None or output_fo is None
@@ -480,7 +504,7 @@ def run_safe(command, output_fn=None, output_fo=None, err_msg=None, thr_exc=True
             print('Error: {}'.format(err_msg), file=sys.stderr)
 
         if thr_exc:
-            raise RuntimeError("A command failed, see messages above.")
+            error("A command failed, see messages above.")
 
         sys.exit(1)
 

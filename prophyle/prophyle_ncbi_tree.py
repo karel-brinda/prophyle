@@ -160,21 +160,19 @@ def build_tree(seqs, taxa2acc, red_factor, root, log):
                     s = seqs[acc]
                     if first:
                         accession = '@'.join([acc] * (s['offset'].count('@') + 1))
-                        fastapath = s['fn']
+                        path = s['fn']
                         base_len = s['seqlen']
                         infasta_offset = s['offset']
                         first = False
                     else:
                         accession += ('@' + acc) * (s['offset'].count('@') + 1)
-                        fastapath += '@' + s['fn']
+                        path += '@' + s['fn']
                         base_len += '@' + s['seqlen']
                         infasta_offset += '@' + s['offset']
                     seq_count += 1
                 except KeyError:
                     pass
-            node.add_features(
-                fastapath=fastapath, base_len=base_len, infasta_offset=infasta_offset, accession=accession
-            )
+            node.add_features(path=path, base_len=base_len, infasta_offset=infasta_offset, accession=accession)
 
     if not hasattr(t, 'taxid'):
         t.add_features(taxid=0)
@@ -221,12 +219,7 @@ def main_fun(library, library_dir, output_f, taxid_map, red_factor, root, log_fi
             ' nodes)', file=log_file
         )
 
-    tax_tree.write(
-        features=[
-            'name', 'accession', 'taxid', 'sci_name', 'fastapath', 'infasta_offset', 'base_len', 'rank', 'lineage',
-            'named_lineage'
-        ], format=1, format_root_node=True, outfile=output_f
-    )
+    tax_tree.write(features=['accession', 'path', 'rank'], format=1, format_root_node=True, outfile=output_f)
 
 
 def main():

@@ -80,7 +80,7 @@ setuptools.setup(
     license='MIT',
     #
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Programming Language :: Python :: 3 :: Only',
         'Operating System :: Unix',
         'Environment :: Console',

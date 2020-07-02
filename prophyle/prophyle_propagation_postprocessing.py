@@ -25,12 +25,12 @@ def load_kmer_stats(tsv_fn):
     counts = {"reduced": {}, "full": {}}
     with open(tsv_fn) as f:
         for x in f:
+            x = x.strip()
             if len(x) == 0:
                 continue
             if x[0] == "#":
                 continue
             else:
-                x = x.strip()
                 (fa, count) = x.split("\t")
                 count = int(count)
                 fa_short = os.path.basename(fa)

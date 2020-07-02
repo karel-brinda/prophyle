@@ -63,14 +63,6 @@ void TreeIndex::fill_tags(const std::string& newick_string) {
   for (int32_t id = 0; id < nodes_count_; ++id) {
     std::string joined_tags;
     auto& tags = tags_[id];
-    auto gi = tags.find("gi");
-    if (gi != tags.cend()) {
-      joined_tags += "\tgi:Z:" + (*gi).second;
-    }
-    auto taxid = tags.find("taxid");
-    if (taxid != tags.cend()) {
-      joined_tags += "\tti:Z:" + (*taxid).second;
-    }
     auto sci_name = tags.find("sci_name");
     if (sci_name != tags.cend()) {
       joined_tags += "\tsn:Z:" + (*sci_name).second;

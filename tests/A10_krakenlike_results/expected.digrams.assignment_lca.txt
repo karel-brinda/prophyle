@@ -1,13 +1,13 @@
 C	AA	o2	2	o2:1
-C	AC	n1,n3,n4	2	n1,n3,n4:1
+C	AC	p1	2	n1,n3,n4:1
 C	AT	p1	2	p1:1
-C	CA	n3,n5,o1	2	n3,n5,o1:1
+C	CA	p1	2	n3,n5,o1:1
 C	CC	n1	2	n1:1
 C	GC	n2	2	n2:1
 C	GG	n1	2	n1:1
-C	GT	n1,n3,n4	2	n1,n3,n4:1
+C	GT	p1	2	n1,n3,n4:1
 C	TA	o2	2	o2:1
-C	TG	n3,n5,o1	2	n3,n5,o1:1
+C	TG	p1	2	n3,n5,o1:1
 C	TT	o2	2	o2:1
 U	AG	0	2	0:1
 U	AN	0	2	A:1 0:0

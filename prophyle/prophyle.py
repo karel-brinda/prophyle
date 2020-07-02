@@ -128,12 +128,10 @@ def _test_tree(fn):
 
     Args:
         fn (str): Newick/NHX tree.
-
-    Raises:
-        AssertionError: The tree is not valid.
     """
     tree = pro.load_nhx_tree(fn, validate=False)
-    assert pro.validate_prophyle_nhx_tree(tree, verbose=True, throw_exceptions=False, output_fo=sys.stderr)
+    if not pro.validate_prophyle_nhx_tree(tree, verbose=True, throw_exceptions=False, output_fo=sys.stderr):
+        error("The tree '{}' could not be properly parsed.".format(fn))
 
 
 def _compile_prophyle_bin(clean=False, parallel=False, silent=True, force=False):
@@ -167,11 +165,11 @@ def _compile_prophyle_bin(clean=False, parallel=False, silent=True, force=False)
 
     except RuntimeError:
         if not os.path.isfile(IND) or not os.path.isfile(ASM):
-            print(
-                "Error: ProPhyle executables could not be compiled. Please, the command '{}' manually.".
-                format(" ".join(command)), file=sys.stderr
+            pro.error(
+                "Error: ProPhyle executables could not be compiled. Please, the command '{}' manually.".format(
+                    " ".join(command)
+                )
             )
-            sys.exit(1)
         else:
             print("Warning: ProPhyle executables could not be recompiled. Going to use the old ones.", file=sys.stderr)
 
@@ -357,7 +355,7 @@ def prophyle_download(library, library_dir, force=False):
         # _pseudo_fai(d)
 
     else:
-        raise ValueError('Unknown library "{}"'.format(library))
+        pro.error('Unknown library "{}"'.format(library))
 
 
 ##################
@@ -404,19 +402,25 @@ def _create_makefile(index_dir, k, library_dir, mask_repeats=False):
     _log_file_md5(makefile)
 
 
-def _propagate(index_dir, threads):
+def _propagate(index_dir, threads, nonprop=0):
     """Run k-mer propagation.
 
     Args:
         index_dir (str): Index directory.
         threads (int): Number of threads for Makefile.
+        nonprop (bool): Switch propagation off.
     """
     pro.message('Running k-mer propagation')
     propagation_dir = os.path.join(index_dir, 'propagation')
     pro.test_files(os.path.join(propagation_dir, 'Makefile'), test_nonzero=True)
 
+    if nonprop:
+        nonprop_cmd_str = "NONPROP=1"
+    else:
+        nonprop_cmd_str = ""
+
     # test if input files for propagation exist
-    command = ['make', '-C', propagation_dir, '-n', '-s', '>', '/dev/null']
+    command = ['make', '-j', threads, '-C', propagation_dir, '-n', '-s', nonprop_cmd_str, '>', '/dev/null']
     pro.run_safe(
         command,
         err_msg="Some FASTA files needed for k-mer propagation are probably missing, see the messages above.",
@@ -425,7 +429,7 @@ def _propagate(index_dir, threads):
     )
 
     # run propagation
-    command = ['make', '-j', threads, '-C', propagation_dir, 'V=1']
+    command = ['make', '-j', threads, '-C', propagation_dir, nonprop_cmd_str, 'V=1']
     pro.run_safe(
         command,
         err_msg="K-mer propagation has not been finished because of an error. See messages above.",
@@ -639,8 +643,19 @@ def _bwtocc2sa_klcp(fa_fn, k):
 
 
 def prophyle_index(
-    index_dir, threads, k, trees_fn, library_dir, construct_klcp, force, no_prefixes, mask_repeats, keep_tmp_files,
-    sampling_rate, autocomplete
+    index_dir,
+    threads,
+    k,
+    trees_fn,
+    library_dir,
+    construct_klcp,
+    force,
+    no_prefixes,
+    mask_repeats,
+    keep_tmp_files,
+    sampling_rate,
+    autocomplete,
+    nonprop,
 ):
     """Build a ProPhyle index.
 
@@ -657,6 +672,7 @@ def prophyle_index(
         keep_tmp_files (bool): Keep temporary files from k-mer propagation.
         sampling rate (float): Sampling rate for subsampling the tree or None for no subsampling.
         autocomplete (bool): Autocomplete names of internal nodes and fasta paths.
+        nonprop (bool): Switch propagation off.
     """
 
     assert isinstance(k, int)
@@ -695,7 +711,8 @@ def prophyle_index(
             if not autocomplete:
                 pro.validate_prophyle_nhx_tree(tree)
             if root != "":
-                assert len(tree.search_nodes(name=root)) != 0, "Node '{}' does not exist in '{}'.".format(root, tree_fn)
+                if len(tree.search_nodes(name=root)) == 0:
+                    pro.error("Node '{}' does not exist in '{}'.".format(root, tree_fn))
         if len(trees_fn) != 1:
             pro.message('Merging {} trees'.format(len(trees_fn)))
         _propagation_preprocessing(
@@ -716,7 +733,7 @@ def prophyle_index(
     if recompute:
         pro.message('[2/6] Running k-mer propagation', upper=True)
         _create_makefile(index_dir, k, library_dir, mask_repeats=mask_repeats)
-        _propagate(index_dir, threads=threads)
+        _propagate(index_dir, threads=threads, nonprop=nonprop)
         _propagation_postprocessing(index_dir, index_tree_1, index_tree_2)
         _test_tree(index_tree_2)
         _kmer_stats(index_dir)
@@ -860,7 +877,8 @@ def prophyle_classify(
     )
 
     (bwt_s, sa_s) = pro.file_sizes(index_fa + '.bwt', index_fa + '.sa')
-    assert abs(bwt_s - 2 * sa_s) < 1000, 'Inconsistent index (SA vs. BWT)'
+    if not abs(bwt_s - 2 * sa_s) < 1000:
+        pro.error('Inconsistent index (SA vs. BWT)')
     #assert abs(bwt_s - 2 * pac_s) < 1000, 'Inconsistent index (PAC vs. BWT)'
 
     klcp_fn = "{}.{}.klcp".format(index_fa, k)
@@ -873,7 +891,8 @@ def prophyle_classify(
             pro.message("k-LCP file found, going to use rolling window")
             pro.test_files(klcp_fn)
             (klcp_s, ) = pro.file_sizes(klcp_fn)
-            assert abs(bwt_s - 4 * klcp_s) < 1000, 'Inconsistent index (KLCP vs. BWT)'
+            if not abs(bwt_s - 4 * klcp_s) < 1000:
+                pro.error('Inconsistent index (KLCP vs. BWT)')
         else:
             pro.message("k-LCP file not found, going to use restarted search")
 
@@ -939,6 +958,17 @@ def prophyle_analyze(index_dir, out_prefix, input_fns, stats, in_format):
     pro.run_safe(cmd_analyze)
 
 
+######################
+# PROPHYLE FOOTPRINT #
+######################
+
+
+def prophyle_footprint(index_dir):
+    bwt_size = pro.file_sizes(os.path.join(index_dir, "index.fa.bwt"))[0]
+    index_size = 2 * bwt_size
+    print(pro.sizeof_fmt(index_size))
+
+
 #####################
 # PROPHYLE COMPRESS #
 #####################
@@ -979,25 +1009,39 @@ def prophyle_compress(index_dir, archive):
 def prophyle_decompress(archive, output_dir, klcp):
     pro.test_files(archive)
 
-    _compile_prophyle_bin(parallel=True)
+    if not os.path.isdir(output_dir):
+        pro.error("Directory '{}' does not exist.".format(output_dir))
 
     with tarfile.open(archive) as tar:
         names = tar.getnames()
         index_name = names[0]
         for x in FILES_TO_ARCHIVE:
-            assert os.path.join(index_name, x) in names, "File '{}' is missing in the archive".format(x)
+            if not os.path.join(index_name, x) in names:
+                pro.error("File '{}' is missing in the archive".format(x))
 
     index_dir = os.path.join(output_dir, index_name)
 
-    pro.message("Decompressing index core files")
+    index_exists = True
+    for i in range(1, 7):
+        fn = os.path.join(index_dir, ".complete.{}".format(i))
+        if not os.path.isfile(fn):
+            index_exists = False
+            break
+    if index_exists:
+        pro.message("Index already exists")
+        return
 
+    _compile_prophyle_bin(parallel=True)
+
+    pro.message("Decompressing core index files")
     cmd = ["tar", "xvf", archive, "-C", output_dir]
     pro.run_safe(cmd)
-    pro.message("Core files have been decompressed, reconstructing the index")
+    fn = os.path.join(index_dir, ".complete.4")
+    pro.rm(fn)
 
+    pro.message("Reconstructing the index")
     pro.touch(os.path.join(index_dir, "index.fa"))
     pro.touch(os.path.join(index_dir, "index.fa.pac"))
-
     if klcp:
         config = pro.load_index_config(index_dir)
         cmd = [PROPHYLE, "index", "-k", config['k'], os.path.join(index_dir, "tree.nw"), index_dir]
@@ -1027,9 +1071,9 @@ def parser():
         def error(self, message):
             if len(sys.argv) == 2:
                 self.print_help()
+                sys.exit(2)
             else:
-                print('error: {}'.format(message), file=sys.stderr)
-            sys.exit(2)
+                pro.error(message, 2)
 
     desc = """\
         Program: prophyle (phylogeny-based metagenomic classification)
@@ -1208,6 +1252,13 @@ def parser():
         action='store_true',
     )
 
+    parser_index.add_argument(
+        '-R',
+        help='switch propagation off (only re-assemble leaves)',
+        dest='nonprop',
+        action='store_true',
+    )
+
     _add_configuration_parameter(parser_index)
 
     ##########
@@ -1374,6 +1425,23 @@ def parser():
 
     ##########
 
+    parser_footprint = subparsers.add_parser(
+        'footprint',
+        help='estimate memory footprint',
+        formatter_class=fc,
+    )
+
+    parser_footprint.add_argument(
+        'index_dir',
+        metavar='<index.dir>',
+        type=str,
+        help='index directory',
+    )
+
+    _add_configuration_parameter(parser_footprint)
+
+    ##########
+
     parser_compress = subparsers.add_parser(
         'compress',
         help='compress a ProPhyle index',
@@ -1512,6 +1580,7 @@ def main():
                 keep_tmp_files=args.keep_tmp_files,
                 sampling_rate=args.sampling_rate,
                 autocomplete=args.autocomplete,
+                nonprop=args.nonprop,
             )
             pro.message('Index construction finished')
             pro.close_log()
@@ -1550,6 +1619,10 @@ def main():
                 stats=args.stats,
                 in_format=args.in_format,
             )
+
+        elif subcommand == "footprint":
+
+            prophyle_footprint(index_dir=args.index_dir, )
 
         elif subcommand == "compress":
 
@@ -1596,9 +1669,7 @@ def main():
         exit(0)
 
     except KeyboardInterrupt:
-        pro.message("Error: Keyboard interrupt")
-        pro.close_log()
-        exit(1)
+        pro.error("Keyboard interrupt")
 
     finally:
         sys.stdout.flush()
