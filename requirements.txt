@@ -4,4 +4,4 @@ bitarray==3.0.0
 psutil==6.1.1
 pysam==0.22.1
 scipy==1.14.1
-six==1.16.0
+six==1.17.0
